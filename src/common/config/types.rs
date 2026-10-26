@@ -1205,6 +1205,12 @@ pub struct LayoutSettings {
     #[serde(default)]
     #[setting(label = "Default layout", choices)]
     pub mode: LayoutMode,
+    /// Keep `move_node` on the current display instead of carrying a window to the adjacent
+    /// display when it is already at the workspace edge. Traditional layouts then nest the
+    /// workspace in a new container, giving the moved window that whole edge.
+    #[serde(default)]
+    #[setting(ignore)]
+    pub move_node_stays_on_display: bool,
     /// Traditional layout configuration
     #[serde(default)]
     #[setting(ignore)]
