@@ -2582,14 +2582,17 @@ impl LayoutEngine {
                 EventResponse { changed, ..Default::default() }
             }
             LayoutCommand::MoveNode(direction) => {
-                let adjacent_space = self
-                    .next_space_for_direction(
+                let adjacent_space = if self.layout_settings.move_node_stays_on_display {
+                    None
+                } else {
+                    self.next_space_for_direction(
                         space,
                         direction,
                         visible_spaces,
                         visible_space_frames,
                     )
-                    .filter(|&space| self.workspaces.active_layout_for_space(space).is_some());
+                }
+                .filter(|&space| self.workspaces.active_layout_for_space(space).is_some());
                 if !self.workspaces[workspace_id]
                     .layout_system
                     .move_selection_with_display_neighbor(
@@ -4337,6 +4340,81 @@ mod tests {
         centers.insert(middle, test_display_frame(CGPoint::new(2000.0, 0.0)));
 
         (vec![left, right, middle], centers, left, middle, right)
+    }
+
+    #[test]
+    fn move_node_stays_on_display_nests_workspace_at_edge() {
+        use crate::layout_engine::LayoutKind;
+        let mut engine = test_engine();
+        engine.layout_settings.move_node_stays_on_display = true;
+        let mut store = WindowStore::default();
+        let source = SpaceId::new(1);
+        let target = SpaceId::new(2);
+        let size = CGSize::new(1000.0, 1000.0);
+        let moving = WindowId::new(1, 2);
+        for (space, ids) in [(source, vec![1, 2]), (target, vec![3])] {
+            let _ = engine.handle_event(&mut store, LayoutEvent::SpaceExposed(space, size));
+            let _ = engine.handle_event(
+                &mut store,
+                LayoutEvent::windows_observed(
+                    space,
+                    1,
+                    ids.into_iter()
+                        .map(|idx| window_layout_info(WindowId::new(1, idx), size))
+                        .collect(),
+                    None,
+                ),
+            );
+        }
+        // Stack the source windows vertically, so moving right has no sibling to pass.
+        let (ws, layout) = engine.workspaces.active_layout_for_space(source).unwrap();
+        let LayoutSystemKind::Traditional(system) = &mut engine.workspaces[ws].layout_system else {
+            panic!("expected traditional layout");
+        };
+        let root = system.root(layout);
+        system.set_layout(root, LayoutKind::Vertical);
+        system.select_window(layout, moving);
+        let _ = engine.handle_event(&mut store, LayoutEvent::WindowFocused(source, moving));
+
+        // A display sits to the right, which would normally receive the window.
+        let centers = HashMap::from_iter([
+            (source, test_display_frame(CGPoint::new(0.0, 0.0))),
+            (target, test_display_frame(CGPoint::new(1000.0, 0.0))),
+        ]);
+        let _ = engine.handle_command(
+            &mut store,
+            Some(source),
+            &[source, target],
+            &centers,
+            LayoutCommand::MoveNode(Direction::Right),
+        );
+
+        let (target_ws, target_layout) = engine.workspaces.active_layout_for_space(target).unwrap();
+        assert!(
+            !engine.workspaces[target_ws]
+                .layout_system
+                .contains_window(target_layout, moving),
+            "window must not cross to the adjacent display"
+        );
+        let gaps = engine.layout_settings.gaps.clone();
+        let frames: HashMap<_, _> = engine
+            .calculate_layout(
+                source,
+                CGRect::new(CGPoint::new(0.0, 0.0), size),
+                &gaps,
+                Default::default(),
+            )
+            .into_iter()
+            .collect();
+        let (moved, other) = (frames[&moving], frames[&WindowId::new(1, 1)]);
+        assert!(
+            other.max().x <= moved.min().x,
+            "moved window should take the right edge"
+        );
+        assert_eq!(
+            moved.size.height, size.height,
+            "moved window should span the full height"
+        );
     }
 
     #[test]

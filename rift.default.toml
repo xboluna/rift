@@ -86,6 +86,12 @@ hot_reload = true
 # You can set different layouts per workspace using `workspace_rules`.
 mode = "traditional"
 
+# When true, move_node never carries a window to another display. Moving a window into the
+# workspace edge instead regroups the layout (traditional only): the rest of the workspace is
+# nested in a new container and the moved window takes that whole edge, like AeroSpace's
+# create-implicit-container. Use move_window_to_display to change displays.
+#move_node_stays_on_display = false
+
 # Where new windows are inserted by default for every layout:
 # - "next_to_selection": immediately after the selected window
 # - "end_of_tree": at the end of the layout
